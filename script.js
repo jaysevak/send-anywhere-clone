@@ -520,6 +520,22 @@ function handleIncomingConnection(conn) {
     
     conn.on('open', () => {
         console.log('Incoming connection from:', conn.peer);
+        console.log('Selected files:', selectedFiles);
+        showStatus('Receiver connected! Sending files...', 'info');
+        
+        // Send files to the connected peer
+        if (selectedFiles && selectedFiles.length > 0) {
+            console.log('Sending', selectedFiles.length, 'files');
+            sendFilesToPeer(conn);
+        } else {
+            console.error('No files available to send');
+            showStatus('No files to send. Please upload files first.', 'error');
+        }
+    });
+    
+    conn.on('error', (err) => {
+        console.error('Connection error:', err);
+        showStatus('Connection error: ' + err.message, 'error');
     });
 }
 
