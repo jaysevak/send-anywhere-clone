@@ -2,7 +2,7 @@
 let selectedFiles = [];
 let peer = null;
 let connections = {};
-const SHARE_API = 'https://api.jsonbin.io/v3/b';
+const FIREBASE_URL = 'https://file-share-db-default-rtdb.firebaseio.com';
 
 // Initialize PeerJS
 function initPeer() {
@@ -136,7 +136,7 @@ sendBtn.addEventListener('click', async () => {
     try {
         const code = generateCode();
         
-        // Store peer ID with code in cloud
+        // Store peer ID with code in Firebase
         const peerId = peer.id;
         const payload = {
             peerId: peerId,
@@ -149,12 +149,11 @@ sendBtn.addEventListener('click', async () => {
             timestamp: Date.now()
         };
 
-        // Upload to JSONBin with code as name
-        const response = await fetch(SHARE_API, {
-            method: 'POST',
+        // Upload to Firebase
+        const response = await fetch(`${FIREBASE_URL}/shares/${code}.json`, {
+            method: 'PUT',
             headers: {
-                'Content-Type': 'application/json',
-                'X-Bin-Name': `share_${code}`
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)
         });
@@ -308,41 +307,21 @@ async function receiveFiles() {
     showStatus('Looking up code...', 'info');
 
     try {
-        // Search for the code in JSONBin
-        const searchResponse = await fetch(`https://api.jsonbin.io/v3/c/67b8e8c5ad19ca34f8e8c8e5/bins`, {
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+        // Get the peer ID from Firebase
+        const response = await fetch(`${FIREBASE_URL}/shares/${code}.json`);
 
-        let binId = null;
-        if (searchResponse.ok) {
-            const bins = await searchResponse.json();
-            const matchingBin = bins.record?.find(b => b.name === `share_${code}`);
-            if (matchingBin) {
-                binId = matchingBin.id;
-            }
-        }
-
-        if (!binId) {
+        if (!response.ok) {
             showStatus('Code not found. Make sure sender is online and code is correct.', 'error');
             return;
         }
 
-        // Get the peer ID
-        const dataResponse = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!dataResponse.ok) {
-            showStatus('Failed to fetch sender info', 'error');
+        const payload = await response.json();
+        
+        if (!payload || !payload.peerId) {
+            showStatus('Code not found. Make sure sender is online and code is correct.', 'error');
             return;
         }
 
-        const result = await dataResponse.json();
-        const payload = result.record;
         const senderPeerId = payload.peerId;
 
         showStatus('Connecting to sender...', 'info');
