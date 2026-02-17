@@ -141,6 +141,12 @@ sendBtn.addEventListener('click', async () => {
         const peerId = peer.id;
         const code = peerIdToCode(peerId);
         
+        // Store code mapping in localStorage
+        localStorage.setItem(`code_${code}`, JSON.stringify({
+            peerId: peerId,
+            timestamp: Date.now()
+        }));
+        
         // Generate shareable link with peer ID encoded
         const shareUrl = `${window.location.origin}${window.location.pathname}?peer=${encodeURIComponent(peerId)}`;
         
@@ -288,7 +294,29 @@ async function receiveFiles() {
         return;
     }
 
-    showStatus('Code-based connection not supported. Please use the share link instead.', 'error');
+    if (!peer || !peer.id) {
+        showStatus('Initializing connection...', 'info');
+        setTimeout(receiveFiles, 1000);
+        return;
+    }
+
+    showStatus('Looking up code...', 'info');
+
+    try {
+        // Try to get peer ID from localStorage first (same device)
+        const storedData = localStorage.getItem(`code_${code}`);
+        
+        if (storedData) {
+            const data = JSON.parse(storedData);
+            connectToPeer(data.peerId);
+        } else {
+            showStatus('Code not found. Make sure sender is on the same network or use the share link.', 'error');
+        }
+
+    } catch (error) {
+        console.error('Receive error:', error);
+        showStatus('Failed to connect. Please try using the share link.', 'error');
+    }
 }
 
 function connectToPeer(senderPeerId) {
