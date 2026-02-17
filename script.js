@@ -1,6 +1,7 @@
-// Using JSONBin.io as free backend (no auth needed for public bins)
-const API_BASE = 'https://api.jsonbin.io/v3/b';
+// Using file.io API for unlimited file sharing
 let selectedFiles = [];
+const CODE_STORAGE_API = 'https://api.jsonbin.io/v3/b';
+const FILE_STORAGE_API = 'https://file.io';
 
 // Tab Switching
 document.querySelectorAll('.tab').forEach(tab => {
@@ -95,18 +96,38 @@ sendBtn.addEventListener('click', async () => {
 
     try {
         const code = generateCode();
-        const filesData = await Promise.all(
-            selectedFiles.map(file => fileToBase64(file))
-        );
+        const fileLinks = [];
 
+        // Upload each file to file.io
+        for (const file of selectedFiles) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch(FILE_STORAGE_API, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error('Upload failed');
+            
+            const result = await response.json();
+            fileLinks.push({
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                link: result.link,
+                key: result.key
+            });
+        }
+
+        // Store metadata with code
         const payload = {
             code: code,
-            files: filesData,
+            files: fileLinks,
             timestamp: Date.now()
         };
 
-        // Upload to JSONBin
-        const response = await fetch(API_BASE, {
+        const metaResponse = await fetch(CODE_STORAGE_API, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -115,12 +136,12 @@ sendBtn.addEventListener('click', async () => {
             body: JSON.stringify(payload)
         });
 
-        if (!response.ok) throw new Error('Upload failed');
+        if (!metaResponse.ok) throw new Error('Metadata storage failed');
         
-        const result = await response.json();
-        const binId = result.metadata.id;
+        const metaResult = await metaResponse.json();
+        const binId = metaResult.metadata.id;
         
-        // Store mapping in localStorage
+        // Store mapping
         localStorage.setItem(`code_${code}`, binId);
 
         // Generate shareable link
@@ -134,13 +155,15 @@ sendBtn.addEventListener('click', async () => {
         const resultDiv = document.getElementById('sendResult');
         resultDiv.style.display = 'block';
         
-        // Add share URL if not exists
-        if (!resultDiv.querySelector('.share-url')) {
-            const shareLink = document.createElement('div');
-            shareLink.className = 'link share-url';
-            shareLink.innerHTML = `<small>Share this link:</small><br><a href="${shareUrl}" target="_blank">${shareUrl}</a>`;
-            resultDiv.appendChild(shareLink);
-        }
+        // Remove old share URL if exists
+        const oldUrl = resultDiv.querySelector('.share-url');
+        if (oldUrl) oldUrl.remove();
+        
+        // Add share URL
+        const shareLink = document.createElement('div');
+        shareLink.className = 'link share-url';
+        shareLink.innerHTML = `<small>Share this link:</small><br><a href="${shareUrl}" target="_blank">${shareUrl}</a>`;
+        resultDiv.appendChild(shareLink);
         
         showStatus('Files uploaded successfully!', 'success');
 
@@ -216,16 +239,15 @@ async function receiveFiles() {
     showStatus('Fetching files...', 'info');
 
     try {
-        // Try to get binId from localStorage first
+        // Get binId from localStorage
         let binId = localStorage.getItem(`code_${code}`);
         
         if (!binId) {
-            // Try to fetch from JSONBin by searching
             showStatus('Code not found. Files may have expired or code is incorrect.', 'error');
             return;
         }
 
-        const response = await fetch(`${API_BASE}/${binId}/latest`, {
+        const response = await fetch(`${CODE_STORAGE_API}/${binId}/latest`, {
             headers: {
                 'Content-Type': 'application/json'
             }
@@ -247,6 +269,41 @@ async function receiveFiles() {
     } catch (error) {
         showStatus('Files not found or expired. Please check the code.', 'error');
     }
+}
+
+function displayDownloadList(files) {
+    const downloadList = document.getElementById('downloadList');
+    const receiveResult = document.getElementById('receiveResult');
+
+    downloadList.innerHTML = `
+        <h3 style="margin-bottom: 1rem;">Available Files (${files.length})</h3>
+        ${files.map((file, index) => `
+            <div class="download-item">
+                <div class="file-info">
+                    <div class="file-icon">📄</div>
+                    <div class="file-details">
+                        <h4>${file.name}</h4>
+                        <span class="file-size">${formatFileSize(file.size)}</span>
+                    </div>
+                </div>
+                <button class="download-btn" onclick="downloadFileFromLink('${file.link}', '${file.name}')">
+                    Download
+                </button>
+            </div>
+        `).join('')}
+    `;
+
+    receiveResult.style.display = 'block';
+    window.currentFiles = files;
+}
+
+function downloadFileFromLink(link, filename) {
+    const a = document.createElement('a');
+    a.href = link;
+    a.download = filename;
+    a.target = '_blank';
+    a.click();
+    showStatus(`Downloading: ${filename}`, 'success');
 }
 
 function displayDownloadList(files) {
@@ -292,7 +349,7 @@ function downloadFile(index) {
 
 function downloadAll() {
     window.currentFiles.forEach((file, index) => {
-        setTimeout(() => downloadFile(index), index * 500);
+        setTimeout(() => downloadFileFromLink(file.link, file.name), index * 500);
     });
 }
 
