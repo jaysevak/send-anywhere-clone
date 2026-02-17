@@ -190,7 +190,7 @@ sendBtn.addEventListener('click', async () => {
         shareLink.innerHTML = `
             <small>Share this code:</small><br>
             <strong style="font-size: 2rem; color: #667eea;">${code}</strong><br>
-            ${stored ? '<small style="color: #27ae60;">✓ Code works across all devices</small>' : '<small style="color: #e67e22;">⚠ Code works on same browser only</small>'}<br>
+            <small style="color: #27ae60;">✓ Code works on same browser</small><br>
             <small style="color: #999; margin-top: 10px; display: block;">Or share this link:</small>
             <a href="${shareUrl}" target="_blank" style="font-size: 0.9rem; word-break: break-all;">${shareUrl}</a><br>
             <small style="color: #999; margin-top: 10px; display: block;">Keep this page open until transfer completes</small>
