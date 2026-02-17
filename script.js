@@ -250,9 +250,7 @@ function sendFilesToPeer(conn) {
                 });
 
                 offset += CHUNK_SIZE;
-                const progress = Math.min(100, Math.round((offset / file.size) * 100));
-                showStatus(`Sending ${file.name}: ${progress}%`, 'info');
-
+                
                 if (offset < file.size) {
                     setTimeout(sendChunk, 10);
                 } else {
@@ -490,41 +488,46 @@ function connectToPeer(senderPeerId) {
                 };
                 fileChunks = [];
                 receivedBytes = 0;
-                showStatus(`Receiving ${data.name}... 0%`, 'info');
+                showStatus(`Receiving ${data.name}...`, 'info');
             } else if (data.type === 'file-chunk') {
-                // Receive chunk
+                // Receive chunk silently
                 fileChunks.push(data.data);
                 receivedBytes += data.data.byteLength;
-                
-                // Show progress
-                const progress = Math.round((receivedBytes / currentFile.size) * 100);
-                showStatus(`Receiving ${currentFile.name}... ${progress}%`, 'info');
             } else if (data.type === 'file-end') {
-                // File complete - combine chunks
-                showStatus(`Processing ${currentFile.name}...`, 'info');
+                // File complete - combine chunks and download
                 const blob = new Blob(fileChunks, { type: currentFile.fileType });
+                
+                // Download immediately
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = currentFile.name;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                
+                // Clean up after delay
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 1000);
+                
+                showStatus(`File ready: ${currentFile.name}`, 'success');
+                
+                // Also save to list for manual download if auto-download fails
                 receivedFiles.push({
                     name: currentFile.name,
                     size: currentFile.size,
                     blob: blob
                 });
                 
-                // Auto-download the file immediately
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = currentFile.name;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                
-                showStatus(`Downloaded ${currentFile.name}!`, 'success');
                 fileChunks = [];
                 currentFile = null;
             } else if (data.type === 'complete') {
-                showStatus('All files received!', 'success');
-                displayReceivedFiles();
+                showStatus('Transfer complete!', 'success');
+                if (receivedFiles.length > 0) {
+                    displayReceivedFiles();
+                }
             }
         });
 
@@ -572,9 +575,17 @@ function downloadReceivedFile(index) {
     const a = document.createElement('a');
     a.href = url;
     a.download = file.name;
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
-    showStatus(`Downloaded: ${file.name}`, 'success');
+    
+    // Clean up after delay to ensure download starts
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 1000);
+    
+    showStatus(`Downloading: ${file.name}`, 'success');
 }
 
 function downloadAllReceived() {
