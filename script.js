@@ -1,20 +1,29 @@
-// Configuration - Using localStorage for token
-const GITHUB_REPO = 'jaysevak/file-share-storage';
-const API_BASE = `https://api.github.com/repos/${GITHUB_REPO}/contents`;
+// Using browser's IndexedDB for peer-to-peer file sharing
+let selectedFiles = [];
+let db;
 
-// Get token from localStorage or prompt user
-function getToken() {
-    let token = localStorage.getItem('github_token');
-    if (!token) {
-        token = prompt('Enter your GitHub token (it will be saved locally):');
-        if (token) {
-            localStorage.setItem('github_token', token);
-        }
-    }
-    return token;
+// Initialize IndexedDB
+function initDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('FileShareDB', 1);
+        
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+            db = request.result;
+            resolve(db);
+        };
+        
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('files')) {
+                db.createObjectStore('files', { keyPath: 'code' });
+            }
+        };
+    });
 }
 
-let selectedFiles = [];
+// Initialize on load
+initDB();
 
 // Tab Switching
 document.querySelectorAll('.tab').forEach(tab => {
@@ -104,14 +113,8 @@ function formatFileSize(bytes) {
 sendBtn.addEventListener('click', async () => {
     if (selectedFiles.length === 0) return;
 
-    const GITHUB_TOKEN = getToken();
-    if (!GITHUB_TOKEN) {
-        showStatus('GitHub token required', 'error');
-        return;
-    }
-
     sendBtn.disabled = true;
-    showStatus('Uploading files...', 'info');
+    showStatus('Processing files...', 'info');
 
     try {
         const code = generateCode();
@@ -120,33 +123,40 @@ sendBtn.addEventListener('click', async () => {
         );
 
         const payload = {
+            code: code,
             files: filesData,
             timestamp: Date.now()
         };
 
-        const response = await fetch(`${API_BASE}/${code}.json`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `token ${GITHUB_TOKEN}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                message: `Upload files - ${code}`,
-                content: btoa(JSON.stringify(payload))
-            })
+        // Store in IndexedDB
+        const transaction = db.transaction(['files'], 'readwrite');
+        const store = transaction.objectStore('files');
+        store.add(payload);
+
+        await new Promise((resolve, reject) => {
+            transaction.oncomplete = resolve;
+            transaction.onerror = () => reject(transaction.error);
         });
 
-        if (!response.ok) throw new Error('Upload failed');
-
+        // Generate shareable link
+        const shareUrl = `${window.location.origin}${window.location.pathname}?code=${code}`;
+        
         document.getElementById('shareCode').textContent = code;
         document.getElementById('send-content').querySelector('.upload-area').style.display = 'none';
         document.getElementById('fileList').style.display = 'none';
         sendBtn.style.display = 'none';
         document.getElementById('sendResult').style.display = 'block';
-        showStatus('Files uploaded successfully!', 'success');
+        
+        // Add share URL
+        const shareLink = document.createElement('div');
+        shareLink.className = 'link';
+        shareLink.innerHTML = `<small>Share this link:</small><br>${shareUrl}`;
+        document.getElementById('sendResult').appendChild(shareLink);
+        
+        showStatus('Files ready to share!', 'success');
 
     } catch (error) {
-        showStatus('Upload failed. Please check your GitHub token and repository.', 'error');
+        showStatus('Failed to process files: ' + error.message, 'error');
         sendBtn.disabled = false;
     }
 });
@@ -195,6 +205,17 @@ codeInput.addEventListener('input', (e) => {
     e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 });
 
+// Check URL for code on load
+window.addEventListener('load', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    if (code) {
+        codeInput.value = code;
+        document.querySelector('[data-tab="receive"]').click();
+        receiveFiles();
+    }
+});
+
 async function receiveFiles() {
     const code = codeInput.value.trim();
     
@@ -203,28 +224,27 @@ async function receiveFiles() {
         return;
     }
 
-    const GITHUB_TOKEN = getToken();
-    if (!GITHUB_TOKEN) {
-        showStatus('GitHub token required', 'error');
-        return;
-    }
-
     showStatus('Fetching files...', 'info');
 
     try {
-        const response = await fetch(`${API_BASE}/${code}.json`, {
-            headers: {
-                'Authorization': `token ${GITHUB_TOKEN}`,
+        const transaction = db.transaction(['files'], 'readonly');
+        const store = transaction.objectStore('files');
+        const request = store.get(code);
+
+        request.onsuccess = () => {
+            const payload = request.result;
+            if (!payload) {
+                showStatus('Files not found. Make sure the sender is on the same device/browser.', 'error');
+                return;
             }
-        });
 
-        if (!response.ok) throw new Error('Files not found');
+            displayDownloadList(payload.files);
+            showStatus('Files ready to download!', 'success');
+        };
 
-        const data = await response.json();
-        const payload = JSON.parse(atob(data.content));
-
-        displayDownloadList(payload.files);
-        showStatus('Files ready to download!', 'success');
+        request.onerror = () => {
+            showStatus('Error fetching files', 'error');
+        };
 
     } catch (error) {
         showStatus('Files not found. Please check the code and try again.', 'error');
