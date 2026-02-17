@@ -203,7 +203,10 @@ sendBtn.addEventListener('click', async () => {
         peer.on('connection', (conn) => {
             conn.on('open', () => {
                 showStatus('Receiver connected! Sending files...', 'info');
-                sendFilesToPeer(conn);
+                // Wait for connection to stabilize
+                setTimeout(() => {
+                    sendFilesToPeer(conn);
+                }, 500);
             });
         });
 
