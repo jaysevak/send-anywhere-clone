@@ -1,7 +1,18 @@
-// GitHub Configuration
-const GITHUB_TOKEN = 'YOUR_GITHUB_TOKEN';
+// Configuration - Using localStorage for token
 const GITHUB_REPO = 'jaysevak/file-share-storage';
 const API_BASE = `https://api.github.com/repos/${GITHUB_REPO}/contents`;
+
+// Get token from localStorage or prompt user
+function getToken() {
+    let token = localStorage.getItem('github_token');
+    if (!token) {
+        token = prompt('Enter your GitHub token (it will be saved locally):');
+        if (token) {
+            localStorage.setItem('github_token', token);
+        }
+    }
+    return token;
+}
 
 let selectedFiles = [];
 
@@ -93,6 +104,12 @@ function formatFileSize(bytes) {
 sendBtn.addEventListener('click', async () => {
     if (selectedFiles.length === 0) return;
 
+    const GITHUB_TOKEN = getToken();
+    if (!GITHUB_TOKEN) {
+        showStatus('GitHub token required', 'error');
+        return;
+    }
+
     sendBtn.disabled = true;
     showStatus('Uploading files...', 'info');
 
@@ -183,6 +200,12 @@ async function receiveFiles() {
     
     if (code.length !== 6) {
         showStatus('Please enter a valid 6-digit code', 'error');
+        return;
+    }
+
+    const GITHUB_TOKEN = getToken();
+    if (!GITHUB_TOKEN) {
+        showStatus('GitHub token required', 'error');
         return;
     }
 
