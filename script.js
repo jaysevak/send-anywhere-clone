@@ -78,6 +78,7 @@ fileInput.addEventListener('change', (e) => {
 
 function handleFiles(files) {
     selectedFiles = Array.from(files);
+    console.log('Files selected:', selectedFiles.length, selectedFiles);
     renderFileList();
     sendBtn.disabled = selectedFiles.length === 0;
 }
@@ -131,6 +132,8 @@ sendBtn.addEventListener('click', async () => {
 
     sendBtn.disabled = true;
     showStatus('Preparing files...', 'info');
+    
+    console.log('Send button clicked. Files:', selectedFiles.length, selectedFiles);
 
     try {
         const peerId = peer.id;
