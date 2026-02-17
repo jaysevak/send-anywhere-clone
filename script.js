@@ -280,7 +280,8 @@ function sendFilesToPeer(conn) {
                 conn.send({
                     type: 'file-chunk',
                     data: e.target.result,
-                    index: fileIndex
+                    index: fileIndex,
+                    progress: Math.min(100, Math.round((offset / file.size) * 100))
                 });
 
                 offset += e.target.result.byteLength; // Use actual bytes sent, not CHUNK_SIZE
@@ -574,28 +575,25 @@ function connectToPeer(senderPeerId) {
                 fileChunks.push(data.data);
                 receivedBytes += data.data.byteLength;
                 
-                // Cap receivedBytes to file size (safety check)
-                if (receivedBytes > currentFile.size) {
-                    console.warn('Received more bytes than expected!');
-                    receivedBytes = currentFile.size;
-                }
-                
-                // Update progress (capped at 100%)
-                const progress = Math.min(100, Math.round((receivedBytes / currentFile.size) * 100));
+                // Use sender's progress if available (synchronized progress)
+                const progress = data.progress !== undefined ? data.progress : Math.min(100, Math.round((receivedBytes / currentFile.size) * 100));
                 document.getElementById('receiveProgressPercent').textContent = `${progress}%`;
                 document.getElementById('receiveProgressFill').style.width = `${progress}%`;
                 
-                // Calculate speed
+                // Calculate speed based on actual received bytes
                 const elapsed = (Date.now() - fileStartTime) / 1000;
                 const speed = elapsed > 0 ? receivedBytes / elapsed : 0;
                 document.getElementById('receiveProgressSpeed').textContent = `${formatFileSize(speed)}/s`;
                 
-                // Show size (capped)
-                const displayReceived = Math.min(receivedBytes, currentFile.size);
+                // Show size based on sender's progress
+                const estimatedReceived = Math.round((progress / 100) * currentFile.size);
                 document.getElementById('receiveProgressSize').textContent = 
-                    `${formatFileSize(displayReceived)} / ${formatFileSize(currentFile.size)}`;
+                    `${formatFileSize(estimatedReceived)} / ${formatFileSize(currentFile.size)}`;
             } else if (data.type === 'file-end') {
-                // File complete - combine chunks and download
+                // File complete - set to 100%
+                document.getElementById('receiveProgressPercent').textContent = '100%';
+                document.getElementById('receiveProgressFill').style.width = '100%';
+                
                 console.log(`File complete: ${currentFile.name}, chunks: ${fileChunks.length}, total bytes: ${receivedBytes}`);
                 const blob = new Blob(fileChunks, { type: currentFile.fileType });
                 
