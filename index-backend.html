@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Share - Send Anywhere Clone</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">📤 SendAnywhere</div>
+        </div>
+    </nav>
+
+    <main class="main-container">
+        <section class="hero">
+            <h1>Share Files Instantly</h1>
+            <p>Fast, secure file sharing with unlimited size</p>
+        </section>
+
+        <div class="transfer-box">
+            <div class="tabs">
+                <button class="tab active" data-tab="send">
+                    <span class="icon">📤</span>
+                    <span>Send</span>
+                </button>
+                <button class="tab" data-tab="receive">
+                    <span class="icon">📥</span>
+                    <span>Receive</span>
+                </button>
+            </div>
+
+            <!-- Send Tab -->
+            <div id="send-content" class="tab-content active">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">
+                        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                        </svg>
+                    </div>
+                    <h3>Drop files here or click to browse</h3>
+                    <p class="upload-hint">No file size limit</p>
+                    <input type="file" id="fileInput" hidden>
+                </div>
+
+                <div id="fileList" class="file-list"></div>
+
+                <button id="sendBtn" class="primary-btn" disabled>
+                    <span>Upload File</span>
+                </button>
+
+                <div id="sendResult" class="result-box" style="display: none;">
+                    <div class="success-icon">✓</div>
+                    <h3>File Ready to Share!</h3>
+                    <div class="share-code">
+                        <label>Share Code</label>
+                        <div class="code-display">
+                            <span id="shareCode"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- QR Code -->
+                    <div class="qr-section">
+                        <p style="margin: 20px 0 10px; color: #666;">Or scan QR code:</p>
+                        <canvas id="qrcode" style="margin: 0 auto; display: block;"></canvas>
+                    </div>
+                    
+                    <p class="expire-text">Expires in 10 minutes</p>
+                    <button class="secondary-btn" onclick="resetSend()">Send Another</button>
+                </div>
+            </div>
+
+            <!-- Receive Tab -->
+            <div id="receive-content" class="tab-content">
+                <div class="receive-area">
+                    <div class="input-group">
+                        <label>Enter 6-Digit Code</label>
+                        <input type="text" id="codeInput" placeholder="000000" maxlength="6" class="code-input" inputmode="numeric">
+                    </div>
+                    <button id="receiveBtn" class="primary-btn" onclick="receiveFiles()">
+                        <span>Download File</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="statusMessage" class="status-message"></div>
+        </div>
+    </main>
+
+    <footer>
+        <p>Powered by Vercel Backend | Built by <a href="https://github.com/jaysevak" target="_blank">@jaysevak</a></p>
+    </footer>
+
+    <script src="backend-script.js"></script>
+</body>
+</html>
