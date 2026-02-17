@@ -47,11 +47,26 @@
                         </svg>
                     </div>
                     <h3>Drop files here or click to browse</h3>
-                    <p class="upload-hint">No file size limit</p>
+                    <p class="upload-hint">Select multiple files - No size limit</p>
                     <input type="file" id="fileInput" multiple hidden>
                 </div>
 
                 <div id="fileList" class="file-list"></div>
+                
+                <!-- Progress Bar -->
+                <div id="sendProgress" class="progress-container" style="display: none;">
+                    <div class="progress-info">
+                        <span id="progressFileName">Preparing...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <div class="progress-speed">
+                        <span id="progressSpeed">0 KB/s</span>
+                        <span id="progressETA">Calculating...</span>
+                    </div>
+                </div>
 
                 <button id="sendBtn" class="primary-btn" disabled>
                     <span>Send Files</span>
@@ -87,6 +102,21 @@
                         <button id="stopScanBtn" class="secondary-btn" style="margin-top: 10px; display: none;">
                             <span>Stop Camera</span>
                         </button>
+                    </div>
+                </div>
+                
+                <!-- Progress Bar for Receiver -->
+                <div id="receiveProgress" class="progress-container" style="display: none;">
+                    <div class="progress-info">
+                        <span id="receiveProgressFileName">Receiving...</span>
+                        <span id="receiveProgressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="receiveProgressFill" class="progress-fill"></div>
+                    </div>
+                    <div class="progress-speed">
+                        <span id="receiveProgressSpeed">0 KB/s</span>
+                        <span id="receiveProgressSize">0 / 0 MB</span>
                     </div>
                 </div>
 

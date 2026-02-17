@@ -89,22 +89,35 @@ function renderFileList() {
         return;
     }
 
-    fileList.innerHTML = selectedFiles.map((file, index) => `
+    fileList.innerHTML = `
+        <div style="margin: 15px 0; padding: 10px; background: #e8f5e9; border-radius: 8px;">
+            <strong>${selectedFiles.length} file(s) selected</strong> - Total: ${formatFileSize(selectedFiles.reduce((sum, f) => sum + f.size, 0))}
+        </div>
+    ` + selectedFiles.map((file, index) => `
         <div class="file-item">
-            <div class="file-info">
-                <div class="file-icon">📄</div>
-                <div class="file-details">
+            <div class="file-item-info">
+                <div class="file-item-icon">${getFileIcon(file.name)}</div>
+                <div class="file-item-details">
                     <h4>${file.name}</h4>
                     <span class="file-size">${formatFileSize(file.size)}</span>
                 </div>
             </div>
-            <button class="remove-btn" onclick="removeFile(${index})">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-            </button>
+            <button class="file-item-remove" onclick="removeFile(${index})">Remove</button>
         </div>
     `).join('');
+}
+
+function getFileIcon(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const icons = {
+        'pdf': '📄', 'doc': '📝', 'docx': '📝', 'txt': '📝',
+        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
+        'mp4': '🎥', 'avi': '🎥', 'mov': '🎥',
+        'mp3': '🎵', 'wav': '🎵', 'flac': '🎵',
+        'zip': '📦', 'rar': '📦', '7z': '📦',
+        'apk': '📱', 'exe': '⚙️'
+    };
+    return icons[ext] || '📄';
 }
 
 function removeFile(index) {
@@ -119,6 +132,14 @@ function formatFileSize(bytes) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function formatTime(seconds) {
+    if (!isFinite(seconds) || seconds < 0) return 'Calculating...';
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins}m ${secs}s`;
 }
 
 // Send Files
@@ -220,16 +241,26 @@ sendBtn.addEventListener('click', async () => {
 function sendFilesToPeer(conn) {
     const CHUNK_SIZE = 16384; // 16KB chunks
     let fileIndex = 0;
+    let startTime = Date.now();
+    let totalBytesSent = 0;
+
+    // Show progress container
+    document.getElementById('sendProgress').style.display = 'block';
 
     function sendNextFile() {
         if (fileIndex >= selectedFiles.length) {
             conn.send({ type: 'complete' });
+            document.getElementById('sendProgress').style.display = 'none';
             showStatus('All files sent successfully!', 'success');
             return;
         }
 
         const file = selectedFiles[fileIndex];
         let offset = 0;
+        const fileStartTime = Date.now();
+
+        // Update progress UI
+        document.getElementById('progressFileName').textContent = `Sending: ${file.name}`;
 
         // Send file metadata first
         conn.send({
@@ -253,6 +284,22 @@ function sendFilesToPeer(conn) {
                 });
 
                 offset += CHUNK_SIZE;
+                totalBytesSent += e.target.result.byteLength;
+                
+                // Update progress
+                const progress = Math.min(100, Math.round((offset / file.size) * 100));
+                document.getElementById('progressPercent').textContent = `${progress}%`;
+                document.getElementById('progressFill').style.width = `${progress}%`;
+                
+                // Calculate speed
+                const elapsed = (Date.now() - fileStartTime) / 1000;
+                const speed = offset / elapsed;
+                document.getElementById('progressSpeed').textContent = `${formatFileSize(speed)}/s`;
+                
+                // Calculate ETA
+                const remaining = file.size - offset;
+                const eta = remaining / speed;
+                document.getElementById('progressETA').textContent = `ETA: ${formatTime(eta)}`;
                 
                 if (offset < file.size) {
                     setTimeout(sendChunk, 10);
@@ -468,15 +515,35 @@ function connectToPeer(senderPeerId) {
 
     try {
         const conn = peer.connect(senderPeerId, {
-            reliable: true
+            reliable: true,
+            serialization: 'binary'
         });
 
         let currentFile = null;
         let fileChunks = [];
         let receivedBytes = 0;
+        let fileStartTime = Date.now();
+        let connectionTimeout;
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+
+        // Connection timeout
+        connectionTimeout = setTimeout(() => {
+            if (!conn.open) {
+                showStatus('Connection timeout. Retrying...', 'error');
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    setTimeout(() => connectToPeer(senderPeerId), 2000);
+                } else {
+                    showStatus('Failed to connect after multiple attempts', 'error');
+                }
+            }
+        }, 15000);
 
         conn.on('open', () => {
+            clearTimeout(connectionTimeout);
             showStatus('Connected! Waiting for files...', 'success');
+            document.getElementById('receiveProgress').style.display = 'block';
         });
 
         conn.on('data', (data) => {
@@ -491,6 +558,33 @@ function connectToPeer(senderPeerId) {
                 };
                 fileChunks = [];
                 receivedBytes = 0;
+                fileStartTime = Date.now();
+                
+                // Update UI
+                document.getElementById('receiveProgressFileName').textContent = `Receiving: ${data.name}`;
+                document.getElementById('receiveProgressPercent').textContent = '0%';
+                document.getElementById('receiveProgressFill').style.width = '0%';
+                
+                showStatus(`Receiving ${data.name}...`, 'info');
+            } else if (data.type === 'file-chunk') {
+                // Receive chunk
+                fileChunks.push(data.data);
+                receivedBytes += data.data.byteLength;
+                
+                // Update progress
+                const progress = Math.round((receivedBytes / currentFile.size) * 100);
+                document.getElementById('receiveProgressPercent').textContent = `${progress}%`;
+                document.getElementById('receiveProgressFill').style.width = `${progress}%`;
+                
+                // Calculate speed
+                const elapsed = (Date.now() - fileStartTime) / 1000;
+                const speed = receivedBytes / elapsed;
+                document.getElementById('receiveProgressSpeed').textContent = `${formatFileSize(speed)}/s`;
+                
+                // Show size
+                document.getElementById('receiveProgressSize').textContent = 
+                    `${formatFileSize(receivedBytes)} / ${formatFileSize(currentFile.size)}`;
+            } else if (data.type === 'file-end') {
                 showStatus(`Receiving ${data.name}...`, 'info');
             } else if (data.type === 'file-chunk') {
                 // Receive chunk silently
@@ -515,7 +609,7 @@ function connectToPeer(senderPeerId) {
                     URL.revokeObjectURL(url);
                 }, 1000);
                 
-                showStatus(`File ready: ${currentFile.name}`, 'success');
+                showStatus(`Downloaded: ${currentFile.name}`, 'success');
                 
                 // Also save to list for manual download if auto-download fails
                 receivedFiles.push({
@@ -527,7 +621,8 @@ function connectToPeer(senderPeerId) {
                 fileChunks = [];
                 currentFile = null;
             } else if (data.type === 'complete') {
-                showStatus('Transfer complete!', 'success');
+                document.getElementById('receiveProgress').style.display = 'none';
+                showStatus('All files received!', 'success');
                 if (receivedFiles.length > 0) {
                     displayReceivedFiles();
                 }
@@ -535,12 +630,27 @@ function connectToPeer(senderPeerId) {
         });
 
         conn.on('error', (err) => {
+            console.error('Connection error:', err);
             showStatus('Connection error: ' + err.message, 'error');
+            document.getElementById('receiveProgress').style.display = 'none';
+            
+            // Retry logic
+            if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                showStatus(`Retrying connection (${retryCount}/${MAX_RETRIES})...`, 'info');
+                setTimeout(() => connectToPeer(senderPeerId), 2000);
+            }
+        });
+        
+        conn.on('close', () => {
+            console.log('Connection closed');
+            document.getElementById('receiveProgress').style.display = 'none';
         });
 
     } catch (error) {
         console.error('Receive error:', error);
         showStatus('Failed to connect. Make sure sender is online.', 'error');
+        document.getElementById('receiveProgress').style.display = 'none';
     }
 }
 
