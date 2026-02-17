@@ -585,12 +585,6 @@ function connectToPeer(senderPeerId) {
                 document.getElementById('receiveProgressSize').textContent = 
                     `${formatFileSize(receivedBytes)} / ${formatFileSize(currentFile.size)}`;
             } else if (data.type === 'file-end') {
-                showStatus(`Receiving ${data.name}...`, 'info');
-            } else if (data.type === 'file-chunk') {
-                // Receive chunk silently
-                fileChunks.push(data.data);
-                receivedBytes += data.data.byteLength;
-            } else if (data.type === 'file-end') {
                 // File complete - combine chunks and download
                 const blob = new Blob(fileChunks, { type: currentFile.fileType });
                 
