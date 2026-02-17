@@ -3,9 +3,6 @@ let selectedFiles = [];
 let peer = null;
 let connections = {};
 
-// Use GitHub Gist as backend (no auth needed for public gists)
-const GIST_API = 'https://api.github.com/gists';
-
 // Initialize PeerJS
 function initPeer() {
     peer = new Peer({
@@ -34,70 +31,6 @@ function initPeer() {
 // Generate 6-digit numeric code
 function generateCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-// Store code mapping online using GitHub Gist
-async function storeCodeMapping(code, peerId) {
-    try {
-        const gistData = {
-            description: `File share code ${code}`,
-            public: true,
-            files: {
-                [`share_${code}.txt`]: {
-                    content: peerId
-                }
-            }
-        };
-        
-        const response = await fetch(GIST_API, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(gistData)
-        });
-        
-        if (response.ok) {
-            const result = await response.json();
-            const gistId = result.id;
-            localStorage.setItem(`gist_${code}`, gistId);
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.error('Storage error:', error);
-        return false;
-    }
-}
-
-// Retrieve peer ID from code
-async function retrievePeerIdFromCode(code) {
-    try {
-        // Try localStorage for gist ID
-        const gistId = localStorage.getItem(`gist_${code}`);
-        if (gistId) {
-            const response = await fetch(`${GIST_API}/${gistId}`);
-            if (response.ok) {
-                const gist = await response.json();
-                const file = gist.files[`share_${code}.txt`];
-                if (file) {
-                    return file.content;
-                }
-            }
-        }
-        
-        // Fallback to localStorage backup
-        const localData = localStorage.getItem(`code_${code}`);
-        if (localData) {
-            const data = JSON.parse(localData);
-            return data.peerId;
-        }
-        
-        return null;
-    } catch (error) {
-        console.error('Retrieve error:', error);
-        return null;
-    }
 }
 
 // Initialize on load
@@ -203,11 +136,7 @@ sendBtn.addEventListener('click', async () => {
         const peerId = peer.id;
         const code = generateCode();
         
-        // Store code mapping online
-        showStatus('Creating share code...', 'info');
-        const stored = await storeCodeMapping(code, peerId);
-        
-        // Also store in localStorage as backup
+        // Store in localStorage
         localStorage.setItem(`code_${code}`, JSON.stringify({
             peerId: peerId,
             timestamp: Date.now()
@@ -405,18 +334,19 @@ async function receiveFiles() {
     showStatus('Looking up code...', 'info');
 
     try {
-        // Retrieve peer ID from backend
-        const peerId = await retrievePeerIdFromCode(code);
+        // Get peer ID from localStorage
+        const localData = localStorage.getItem(`code_${code}`);
         
-        if (peerId) {
-            connectToPeer(peerId.trim());
+        if (localData) {
+            const data = JSON.parse(localData);
+            connectToPeer(data.peerId.trim());
         } else {
-            showStatus('Code not found or expired. Make sure sender is online.', 'error');
+            showStatus('Code not found. Please use the QR code or share link instead.', 'error');
         }
 
     } catch (error) {
         console.error('Receive error:', error);
-        showStatus('Failed to connect. Please check the code.', 'error');
+        showStatus('Failed to connect. Please use the QR code.', 'error');
     }
 }
 
