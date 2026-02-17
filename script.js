@@ -282,13 +282,90 @@ function resetSend() {
     renderFileList();
 }
 
-// Receive Files
+// Receive Files - QR Scanner
+let html5QrCode = null;
+
+const startScanBtn = document.getElementById('startScanBtn');
+const stopScanBtn = document.getElementById('stopScanBtn');
+
+if (startScanBtn) {
+    startScanBtn.addEventListener('click', startQRScanner);
+}
+if (stopScanBtn) {
+    stopScanBtn.addEventListener('click', stopQRScanner);
+}
+
+function startQRScanner() {
+    if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("qr-reader");
+    }
+
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+    html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        onScanSuccess,
+        onScanError
+    ).then(() => {
+        startScanBtn.style.display = 'none';
+        stopScanBtn.style.display = 'block';
+        showStatus('Camera started. Point at QR code...', 'info');
+    }).catch(err => {
+        showStatus('Camera access denied or not available', 'error');
+        console.error('QR Scanner error:', err);
+    });
+}
+
+function stopQRScanner() {
+    if (html5QrCode) {
+        html5QrCode.stop().then(() => {
+            startScanBtn.style.display = 'block';
+            stopScanBtn.style.display = 'none';
+            showStatus('Camera stopped', 'info');
+        }).catch(err => {
+            console.error('Stop error:', err);
+        });
+    }
+}
+
+function onScanSuccess(decodedText, decodedResult) {
+    console.log('QR Code scanned:', decodedText);
+    
+    // Stop scanner
+    stopQRScanner();
+    
+    // Parse URL and extract parameters
+    try {
+        const url = new URL(decodedText);
+        const code = url.searchParams.get('c');
+        const encodedPeer = url.searchParams.get('p');
+        
+        if (code && encodedPeer) {
+            const peerId = atob(encodedPeer);
+            showStatus('QR code detected! Connecting...', 'success');
+            connectToPeer(peerId);
+        } else {
+            showStatus('Invalid QR code', 'error');
+        }
+    } catch (error) {
+        showStatus('Invalid QR code format', 'error');
+        console.error('Parse error:', error);
+    }
+}
+
+function onScanError(errorMessage) {
+    // Ignore scan errors (happens continuously while scanning)
+}
+
 const codeInput = document.getElementById('codeInput');
 
-codeInput.addEventListener('input', (e) => {
-    // Only allow numbers
-    e.target.value = e.target.value.replace(/[^0-9]/g, '');
-});
+if (codeInput) {
+    codeInput.addEventListener('input', (e) => {
+        // Only allow numbers
+        e.target.value = e.target.value.replace(/[^0-9]/g, '');
+    });
+}
 
 // Check URL for peer ID on load
 window.addEventListener('load', () => {

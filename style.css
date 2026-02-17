@@ -527,3 +527,23 @@ footer a:hover {
     padding: 10px;
     background: white;
 }
+
+/* QR Scanner Section */
+.qr-scanner-section {
+    text-align: center;
+}
+
+.qr-scanner-section h3 {
+    color: #667eea;
+}
+
+#qr-reader {
+    border: 2px solid #667eea;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+#qr-reader video {
+    width: 100%;
+    border-radius: 8px;
+}

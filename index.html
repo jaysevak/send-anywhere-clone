@@ -6,6 +6,7 @@
     <title>Send Anywhere - File Transfer</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -77,16 +78,16 @@
             <!-- Receive Tab -->
             <div id="receive-content" class="tab-content">
                 <div class="receive-area">
-                    <div class="input-group">
-                        <label>Enter 6-Digit Code</label>
-                        <input type="text" id="codeInput" placeholder="000000" maxlength="6" class="code-input" inputmode="numeric">
+                    <div class="qr-scanner-section">
+                        <h3 style="margin-bottom: 15px;">Scan QR Code</h3>
+                        <div id="qr-reader" style="width: 100%; max-width: 500px; margin: 0 auto;"></div>
+                        <button id="startScanBtn" class="primary-btn" style="margin-top: 15px;">
+                            <span>📷 Start Camera</span>
+                        </button>
+                        <button id="stopScanBtn" class="secondary-btn" style="margin-top: 10px; display: none;">
+                            <span>Stop Camera</span>
+                        </button>
                     </div>
-                    <button id="receiveBtn" class="primary-btn" onclick="receiveFiles()">
-                        <span>Receive Files</span>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                        </svg>
-                    </button>
                 </div>
 
                 <div id="receiveResult" class="result-box" style="display: none;">
