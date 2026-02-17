@@ -1,7 +1,7 @@
-// Using file.io API for unlimited file sharing
+// Using tmpfiles.org for unlimited file sharing
 let selectedFiles = [];
 const CODE_STORAGE_API = 'https://api.jsonbin.io/v3/b';
-const FILE_STORAGE_API = 'https://file.io';
+const FILE_STORAGE_API = 'https://tmpfiles.org/api/v1/upload';
 
 // Tab Switching
 document.querySelectorAll('.tab').forEach(tab => {
@@ -98,7 +98,7 @@ sendBtn.addEventListener('click', async () => {
         const code = generateCode();
         const fileLinks = [];
 
-        // Upload each file to file.io
+        // Upload each file to tmpfiles.org
         for (const file of selectedFiles) {
             const formData = new FormData();
             formData.append('file', file);
@@ -111,12 +111,18 @@ sendBtn.addEventListener('click', async () => {
             if (!response.ok) throw new Error('Upload failed');
             
             const result = await response.json();
+            
+            if (result.status !== 'success') throw new Error('Upload failed');
+            
+            // tmpfiles.org returns URL like https://tmpfiles.org/12345
+            // We need to modify it to direct download link
+            const fileUrl = result.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+            
             fileLinks.push({
                 name: file.name,
                 size: file.size,
                 type: file.type,
-                link: result.link,
-                key: result.key
+                link: fileUrl
             });
         }
 
@@ -168,6 +174,7 @@ sendBtn.addEventListener('click', async () => {
         showStatus('Files uploaded successfully!', 'success');
 
     } catch (error) {
+        console.error('Upload error:', error);
         showStatus('Upload failed: ' + error.message, 'error');
         sendBtn.disabled = false;
     }
