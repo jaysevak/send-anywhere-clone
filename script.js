@@ -1,29 +1,6 @@
-// Using browser's IndexedDB for peer-to-peer file sharing
+// Using JSONBin.io as free backend (no auth needed for public bins)
+const API_BASE = 'https://api.jsonbin.io/v3/b';
 let selectedFiles = [];
-let db;
-
-// Initialize IndexedDB
-function initDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open('FileShareDB', 1);
-        
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-            db = request.result;
-            resolve(db);
-        };
-        
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains('files')) {
-                db.createObjectStore('files', { keyPath: 'code' });
-            }
-        };
-    });
-}
-
-// Initialize on load
-initDB();
 
 // Tab Switching
 document.querySelectorAll('.tab').forEach(tab => {
@@ -114,7 +91,7 @@ sendBtn.addEventListener('click', async () => {
     if (selectedFiles.length === 0) return;
 
     sendBtn.disabled = true;
-    showStatus('Processing files...', 'info');
+    showStatus('Uploading files...', 'info');
 
     try {
         const code = generateCode();
@@ -128,15 +105,23 @@ sendBtn.addEventListener('click', async () => {
             timestamp: Date.now()
         };
 
-        // Store in IndexedDB
-        const transaction = db.transaction(['files'], 'readwrite');
-        const store = transaction.objectStore('files');
-        store.add(payload);
-
-        await new Promise((resolve, reject) => {
-            transaction.oncomplete = resolve;
-            transaction.onerror = () => reject(transaction.error);
+        // Upload to JSONBin
+        const response = await fetch(API_BASE, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Bin-Name': code
+            },
+            body: JSON.stringify(payload)
         });
+
+        if (!response.ok) throw new Error('Upload failed');
+        
+        const result = await response.json();
+        const binId = result.metadata.id;
+        
+        // Store mapping in localStorage
+        localStorage.setItem(`code_${code}`, binId);
 
         // Generate shareable link
         const shareUrl = `${window.location.origin}${window.location.pathname}?code=${code}`;
@@ -145,18 +130,22 @@ sendBtn.addEventListener('click', async () => {
         document.getElementById('send-content').querySelector('.upload-area').style.display = 'none';
         document.getElementById('fileList').style.display = 'none';
         sendBtn.style.display = 'none';
-        document.getElementById('sendResult').style.display = 'block';
         
-        // Add share URL
-        const shareLink = document.createElement('div');
-        shareLink.className = 'link';
-        shareLink.innerHTML = `<small>Share this link:</small><br>${shareUrl}`;
-        document.getElementById('sendResult').appendChild(shareLink);
+        const resultDiv = document.getElementById('sendResult');
+        resultDiv.style.display = 'block';
         
-        showStatus('Files ready to share!', 'success');
+        // Add share URL if not exists
+        if (!resultDiv.querySelector('.share-url')) {
+            const shareLink = document.createElement('div');
+            shareLink.className = 'link share-url';
+            shareLink.innerHTML = `<small>Share this link:</small><br><a href="${shareUrl}" target="_blank">${shareUrl}</a>`;
+            resultDiv.appendChild(shareLink);
+        }
+        
+        showStatus('Files uploaded successfully!', 'success');
 
     } catch (error) {
-        showStatus('Failed to process files: ' + error.message, 'error');
+        showStatus('Upload failed: ' + error.message, 'error');
         sendBtn.disabled = false;
     }
 });
@@ -212,7 +201,7 @@ window.addEventListener('load', () => {
     if (code) {
         codeInput.value = code;
         document.querySelector('[data-tab="receive"]').click();
-        receiveFiles();
+        setTimeout(() => receiveFiles(), 500);
     }
 });
 
@@ -227,27 +216,36 @@ async function receiveFiles() {
     showStatus('Fetching files...', 'info');
 
     try {
-        const transaction = db.transaction(['files'], 'readonly');
-        const store = transaction.objectStore('files');
-        const request = store.get(code);
+        // Try to get binId from localStorage first
+        let binId = localStorage.getItem(`code_${code}`);
+        
+        if (!binId) {
+            // Try to fetch from JSONBin by searching
+            showStatus('Code not found. Files may have expired or code is incorrect.', 'error');
+            return;
+        }
 
-        request.onsuccess = () => {
-            const payload = request.result;
-            if (!payload) {
-                showStatus('Files not found. Make sure the sender is on the same device/browser.', 'error');
-                return;
+        const response = await fetch(`${API_BASE}/${binId}/latest`, {
+            headers: {
+                'Content-Type': 'application/json'
             }
+        });
 
-            displayDownloadList(payload.files);
-            showStatus('Files ready to download!', 'success');
-        };
+        if (!response.ok) throw new Error('Files not found');
 
-        request.onerror = () => {
-            showStatus('Error fetching files', 'error');
-        };
+        const result = await response.json();
+        const payload = result.record;
+
+        if (payload.code !== code) {
+            showStatus('Invalid code', 'error');
+            return;
+        }
+
+        displayDownloadList(payload.files);
+        showStatus('Files ready to download!', 'success');
 
     } catch (error) {
-        showStatus('Files not found. Please check the code and try again.', 'error');
+        showStatus('Files not found or expired. Please check the code.', 'error');
     }
 }
 
