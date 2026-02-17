@@ -2,11 +2,9 @@
 let selectedFiles = [];
 let peer = null;
 let connections = {};
-const SUPABASE_URL = 'https://xyzcompany.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emNvbXBhbnkiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTYxNjE2MTYxNiwiZXhwIjoxOTMxNzM3NjE2fQ.example';
 
-// Use a simple free API for code storage
-const CODE_API = 'https://api.npoint.io/';
+// Use dpaste.com as a simple key-value store
+const STORAGE_API = 'https://dpaste.com/api/v2/';
 
 // Initialize PeerJS
 function initPeer() {
@@ -36,6 +34,60 @@ function initPeer() {
 // Generate 6-digit numeric code
 function generateCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Store code mapping online
+async function storeCodeMapping(code, peerId) {
+    try {
+        const formData = new FormData();
+        formData.append('content', peerId);
+        formData.append('title', `share_${code}`);
+        formData.append('syntax', 'text');
+        formData.append('expiry_days', '1');
+        
+        const response = await fetch(STORAGE_API, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            const url = await response.text();
+            // Extract paste ID from URL
+            const pasteId = url.trim().split('/').pop();
+            localStorage.setItem(`paste_${code}`, pasteId);
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('Storage error:', error);
+        return false;
+    }
+}
+
+// Retrieve peer ID from code
+async function retrievePeerIdFromCode(code) {
+    try {
+        // Try localStorage first
+        const pasteId = localStorage.getItem(`paste_${code}`);
+        if (pasteId) {
+            const response = await fetch(`https://dpaste.com/${pasteId}.txt`);
+            if (response.ok) {
+                return await response.text();
+            }
+        }
+        
+        // Try localStorage backup
+        const localData = localStorage.getItem(`code_${code}`);
+        if (localData) {
+            const data = JSON.parse(localData);
+            return data.peerId;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Retrieve error:', error);
+        return null;
+    }
 }
 
 // Initialize on load
@@ -141,16 +193,16 @@ sendBtn.addEventListener('click', async () => {
         const peerId = peer.id;
         const code = generateCode();
         
-        // Store code and peer ID mapping using a simple key-value store
-        const payload = {
+        // Store code mapping online
+        showStatus('Creating share code...', 'info');
+        const stored = await storeCodeMapping(code, peerId);
+        
+        // Also store in localStorage as backup
+        localStorage.setItem(`code_${code}`, JSON.stringify({
             peerId: peerId,
             timestamp: Date.now()
-        };
+        }));
         
-        // Store in localStorage as backup
-        localStorage.setItem(`code_${code}`, JSON.stringify(payload));
-        
-        // Also store globally using a simple approach - encode in URL
         const shareUrl = `${window.location.origin}${window.location.pathname}?c=${code}&p=${btoa(peerId)}`;
         
         document.getElementById('shareCode').textContent = code;
@@ -171,7 +223,8 @@ sendBtn.addEventListener('click', async () => {
         shareLink.innerHTML = `
             <small>Share this code:</small><br>
             <strong style="font-size: 2rem; color: #667eea;">${code}</strong><br>
-            <small style="color: #999; margin-top: 10px; display: block;">Or share this link for cross-device:</small>
+            ${stored ? '<small style="color: #27ae60;">✓ Code works across all devices</small>' : '<small style="color: #e67e22;">⚠ Code works on same browser only</small>'}<br>
+            <small style="color: #999; margin-top: 10px; display: block;">Or share this link:</small>
             <a href="${shareUrl}" target="_blank" style="font-size: 0.9rem; word-break: break-all;">${shareUrl}</a><br>
             <small style="color: #999; margin-top: 10px; display: block;">Keep this page open until transfer completes</small>
         `;
@@ -316,19 +369,18 @@ async function receiveFiles() {
     showStatus('Looking up code...', 'info');
 
     try {
-        // Try to get peer ID from localStorage first (same device)
-        const storedData = localStorage.getItem(`code_${code}`);
+        // Retrieve peer ID from backend
+        const peerId = await retrievePeerIdFromCode(code);
         
-        if (storedData) {
-            const data = JSON.parse(storedData);
-            connectToPeer(data.peerId);
+        if (peerId) {
+            connectToPeer(peerId.trim());
         } else {
-            showStatus('Code not found. For cross-device transfer, please use the share link instead of just the code.', 'error');
+            showStatus('Code not found or expired. Make sure sender is online.', 'error');
         }
 
     } catch (error) {
         console.error('Receive error:', error);
-        showStatus('Failed to connect. Please use the share link for cross-device transfers.', 'error');
+        showStatus('Failed to connect. Please check the code.', 'error');
     }
 }
 
