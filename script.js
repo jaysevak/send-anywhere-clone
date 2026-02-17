@@ -147,21 +147,20 @@ sendBtn.addEventListener('click', async () => {
         // Generate QR Code
         setTimeout(() => {
             if (typeof QRCode !== 'undefined') {
+                const qrContainer = document.getElementById('qrSection');
                 const canvas = document.getElementById('qrcode');
-                QRCode.toCanvas(canvas, shareUrl, {
+                
+                // Clear previous QR if exists
+                canvas.innerHTML = '';
+                
+                // Generate new QR code
+                new QRCode(canvas, {
+                    text: shareUrl,
                     width: 250,
-                    margin: 2,
-                    color: {
-                        dark: '#667eea',
-                        light: '#ffffff'
-                    }
-                }, (error) => {
-                    if (error) {
-                        console.error('QR generation error:', error);
-                        document.getElementById('qrSection').innerHTML = 
-                            '<p style="color: #e74c3c;">QR code generation failed. Share this link instead:</p>' +
-                            '<p style="word-break: break-all; font-size: 0.8rem;">' + shareUrl + '</p>';
-                    }
+                    height: 250,
+                    colorDark: '#667eea',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
                 });
             } else {
                 console.error('QRCode library not loaded');
