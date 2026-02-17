@@ -216,18 +216,31 @@ sendBtn.addEventListener('click', async () => {
         const shareUrl = `${window.location.origin}${window.location.pathname}?c=${code}&p=${btoa(peerId)}`;
         
         // Generate QR Code
-        if (typeof QRCode !== 'undefined') {
-            const canvas = document.getElementById('qrcode');
-            const qrSection = document.getElementById('qrSection');
-            QRCode.toCanvas(canvas, shareUrl, {
-                width: 250,
-                margin: 2,
-                color: {
-                    dark: '#667eea',
-                    light: '#ffffff'
-                }
-            });
-        }
+        setTimeout(() => {
+            if (typeof QRCode !== 'undefined') {
+                const canvas = document.getElementById('qrcode');
+                QRCode.toCanvas(canvas, shareUrl, {
+                    width: 250,
+                    margin: 2,
+                    color: {
+                        dark: '#667eea',
+                        light: '#ffffff'
+                    }
+                }, (error) => {
+                    if (error) {
+                        console.error('QR generation error:', error);
+                        document.getElementById('qrSection').innerHTML = 
+                            '<p style="color: #e74c3c;">QR code generation failed. Share this link instead:</p>' +
+                            '<p style="word-break: break-all; font-size: 0.8rem;">' + shareUrl + '</p>';
+                    }
+                });
+            } else {
+                console.error('QRCode library not loaded');
+                document.getElementById('qrSection').innerHTML = 
+                    '<p style="color: #e74c3c;">QR library not loaded. Share this link:</p>' +
+                    '<p style="word-break: break-all; font-size: 0.8rem;">' + shareUrl + '</p>';
+            }
+        }, 100);
         
         document.getElementById('send-content').querySelector('.upload-area').style.display = 'none';
         document.getElementById('fileList').style.display = 'none';
