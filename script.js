@@ -1,7 +1,35 @@
-// Using tmpfiles.org for unlimited file sharing
+// Peer-to-peer file sharing using PeerJS (like Send Anywhere)
 let selectedFiles = [];
-const CODE_STORAGE_API = 'https://api.jsonbin.io/v3/b';
-const FILE_STORAGE_API = 'https://tmpfiles.org/api/v1/upload';
+let peer = null;
+let connections = {};
+
+// Initialize PeerJS
+function initPeer() {
+    peer = new Peer({
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:global.stun.twilio.com:3478' }
+            ]
+        }
+    });
+
+    peer.on('open', (id) => {
+        console.log('Peer ID:', id);
+    });
+
+    peer.on('connection', (conn) => {
+        handleIncomingConnection(conn);
+    });
+
+    peer.on('error', (err) => {
+        console.error('Peer error:', err);
+        showStatus('Connection error: ' + err.message, 'error');
+    });
+}
+
+// Initialize on load
+initPeer();
 
 // Tab Switching
 document.querySelectorAll('.tab').forEach(tab => {
@@ -90,65 +118,33 @@ function formatFileSize(bytes) {
 // Send Files
 sendBtn.addEventListener('click', async () => {
     if (selectedFiles.length === 0) return;
+    if (!peer || !peer.id) {
+        showStatus('Initializing connection...', 'info');
+        setTimeout(() => sendBtn.click(), 1000);
+        return;
+    }
 
     sendBtn.disabled = true;
-    showStatus('Uploading files...', 'info');
+    showStatus('Preparing files...', 'info');
 
     try {
         const code = generateCode();
-        const fileLinks = [];
-
-        // Upload each file to tmpfiles.org
-        for (const file of selectedFiles) {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const response = await fetch(FILE_STORAGE_API, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) throw new Error('Upload failed');
-            
-            const result = await response.json();
-            
-            if (result.status !== 'success') throw new Error('Upload failed');
-            
-            // tmpfiles.org returns URL like https://tmpfiles.org/12345
-            // We need to modify it to direct download link
-            const fileUrl = result.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
-            
-            fileLinks.push({
-                name: file.name,
-                size: file.size,
-                type: file.type,
-                link: fileUrl
-            });
-        }
-
-        // Store metadata with code
+        
+        // Store peer ID with code
+        const peerId = peer.id;
         const payload = {
-            code: code,
-            files: fileLinks,
+            peerId: peerId,
+            fileCount: selectedFiles.length,
+            files: selectedFiles.map(f => ({
+                name: f.name,
+                size: f.size,
+                type: f.type
+            })),
             timestamp: Date.now()
         };
 
-        const metaResponse = await fetch(CODE_STORAGE_API, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Bin-Name': code
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!metaResponse.ok) throw new Error('Metadata storage failed');
-        
-        const metaResult = await metaResponse.json();
-        const binId = metaResult.metadata.id;
-        
-        // Store mapping
-        localStorage.setItem(`code_${code}`, binId);
+        // Store in localStorage and also try to store online
+        localStorage.setItem(`share_${code}`, JSON.stringify(payload));
 
         // Generate shareable link
         const shareUrl = `${window.location.origin}${window.location.pathname}?code=${code}`;
@@ -168,17 +164,59 @@ sendBtn.addEventListener('click', async () => {
         // Add share URL
         const shareLink = document.createElement('div');
         shareLink.className = 'link share-url';
-        shareLink.innerHTML = `<small>Share this link:</small><br><a href="${shareUrl}" target="_blank">${shareUrl}</a>`;
+        shareLink.innerHTML = `<small>Share this link:</small><br><a href="${shareUrl}" target="_blank">${shareUrl}</a><br><small style="color: #999; margin-top: 10px; display: block;">Keep this page open until transfer completes</small>`;
         resultDiv.appendChild(shareLink);
         
-        showStatus('Files uploaded successfully!', 'success');
+        showStatus('Ready to share! Waiting for receiver...', 'success');
+
+        // Listen for incoming connections
+        peer.on('connection', (conn) => {
+            conn.on('open', () => {
+                showStatus('Receiver connected! Sending files...', 'info');
+                sendFilesToPeer(conn);
+            });
+        });
 
     } catch (error) {
-        console.error('Upload error:', error);
-        showStatus('Upload failed: ' + error.message, 'error');
+        console.error('Setup error:', error);
+        showStatus('Setup failed: ' + error.message, 'error');
         sendBtn.disabled = false;
     }
 });
+
+function sendFilesToPeer(conn) {
+    let fileIndex = 0;
+
+    function sendNextFile() {
+        if (fileIndex >= selectedFiles.length) {
+            conn.send({ type: 'complete' });
+            showStatus('All files sent successfully!', 'success');
+            return;
+        }
+
+        const file = selectedFiles[fileIndex];
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            conn.send({
+                type: 'file',
+                name: file.name,
+                size: file.size,
+                fileType: file.type,
+                data: e.target.result,
+                index: fileIndex,
+                total: selectedFiles.length
+            });
+            fileIndex++;
+            showStatus(`Sending ${fileIndex}/${selectedFiles.length} files...`, 'info');
+            setTimeout(sendNextFile, 100);
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+
+    sendNextFile();
+}
 
 function generateCode() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -231,9 +269,11 @@ window.addEventListener('load', () => {
     if (code) {
         codeInput.value = code;
         document.querySelector('[data-tab="receive"]').click();
-        setTimeout(() => receiveFiles(), 500);
+        setTimeout(() => receiveFiles(), 1000);
     }
 });
+
+let receivedFiles = [];
 
 async function receiveFiles() {
     const code = codeInput.value.trim();
@@ -243,48 +283,67 @@ async function receiveFiles() {
         return;
     }
 
-    showStatus('Fetching files...', 'info');
+    if (!peer || !peer.id) {
+        showStatus('Initializing connection...', 'info');
+        setTimeout(receiveFiles, 1000);
+        return;
+    }
+
+    showStatus('Connecting to sender...', 'info');
 
     try {
-        // Get binId from localStorage
-        let binId = localStorage.getItem(`code_${code}`);
+        // Get sender's peer ID from localStorage
+        const shareData = localStorage.getItem(`share_${code}`);
         
-        if (!binId) {
-            showStatus('Code not found. Files may have expired or code is incorrect.', 'error');
+        if (!shareData) {
+            showStatus('Code not found. Make sure sender is online.', 'error');
             return;
         }
 
-        const response = await fetch(`${CODE_STORAGE_API}/${binId}/latest`, {
-            headers: {
-                'Content-Type': 'application/json'
+        const payload = JSON.parse(shareData);
+        const senderPeerId = payload.peerId;
+
+        // Connect to sender
+        const conn = peer.connect(senderPeerId, {
+            reliable: true
+        });
+
+        conn.on('open', () => {
+            showStatus('Connected! Receiving files...', 'success');
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'file') {
+                const blob = new Blob([data.data], { type: data.fileType });
+                receivedFiles.push({
+                    name: data.name,
+                    size: data.size,
+                    blob: blob
+                });
+                showStatus(`Receiving ${data.index + 1}/${data.total} files...`, 'info');
+            } else if (data.type === 'complete') {
+                showStatus('All files received!', 'success');
+                displayReceivedFiles();
             }
         });
 
-        if (!response.ok) throw new Error('Files not found');
-
-        const result = await response.json();
-        const payload = result.record;
-
-        if (payload.code !== code) {
-            showStatus('Invalid code', 'error');
-            return;
-        }
-
-        displayDownloadList(payload.files);
-        showStatus('Files ready to download!', 'success');
+        conn.on('error', (err) => {
+            showStatus('Connection error: ' + err.message, 'error');
+        });
 
     } catch (error) {
-        showStatus('Files not found or expired. Please check the code.', 'error');
+        console.error('Receive error:', error);
+        showStatus('Failed to connect. Please check the code.', 'error');
     }
 }
 
-function displayDownloadList(files) {
+function displayReceivedFiles() {
     const downloadList = document.getElementById('downloadList');
     const receiveResult = document.getElementById('receiveResult');
 
     downloadList.innerHTML = `
-        <h3 style="margin-bottom: 1rem;">Available Files (${files.length})</h3>
-        ${files.map((file, index) => `
+        <h3 style="margin-bottom: 1rem;">Received Files (${receivedFiles.length})</h3>
+        ${receivedFiles.map((file, index) => `
             <div class="download-item">
                 <div class="file-info">
                     <div class="file-icon">📄</div>
@@ -293,24 +352,42 @@ function displayDownloadList(files) {
                         <span class="file-size">${formatFileSize(file.size)}</span>
                     </div>
                 </div>
-                <button class="download-btn" onclick="downloadFileFromLink('${file.link}', '${file.name}')">
+                <button class="download-btn" onclick="downloadReceivedFile(${index})">
                     Download
                 </button>
             </div>
         `).join('')}
+        <button class="primary-btn" onclick="downloadAllReceived()" style="margin-top: 1rem;">
+            Download All Files
+        </button>
     `;
 
     receiveResult.style.display = 'block';
-    window.currentFiles = files;
 }
 
-function downloadFileFromLink(link, filename) {
+function downloadReceivedFile(index) {
+    const file = receivedFiles[index];
+    const url = URL.createObjectURL(file.blob);
     const a = document.createElement('a');
-    a.href = link;
-    a.download = filename;
-    a.target = '_blank';
+    a.href = url;
+    a.download = file.name;
     a.click();
-    showStatus(`Downloading: ${filename}`, 'success');
+    URL.revokeObjectURL(url);
+    showStatus(`Downloaded: ${file.name}`, 'success');
+}
+
+function downloadAllReceived() {
+    receivedFiles.forEach((file, index) => {
+        setTimeout(() => downloadReceivedFile(index), index * 500);
+    });
+}
+
+function handleIncomingConnection(conn) {
+    connections[conn.peer] = conn;
+    
+    conn.on('open', () => {
+        console.log('Incoming connection from:', conn.peer);
+    });
 }
 
 function displayDownloadList(files) {
@@ -355,9 +432,7 @@ function downloadFile(index) {
 }
 
 function downloadAll() {
-    window.currentFiles.forEach((file, index) => {
-        setTimeout(() => downloadFileFromLink(file.link, file.name), index * 500);
-    });
+    downloadAllReceived();
 }
 
 function base64ToArrayBuffer(base64) {
