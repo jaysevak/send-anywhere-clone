@@ -2,6 +2,7 @@
 let selectedFiles = [];
 let peer = null;
 let connections = {};
+const SHARE_API = 'https://api.jsonbin.io/v3/b';
 
 // Initialize PeerJS
 function initPeer() {
@@ -26,6 +27,11 @@ function initPeer() {
         console.error('Peer error:', err);
         showStatus('Connection error: ' + err.message, 'error');
     });
+}
+
+// Generate 6-digit numeric code
+function generateCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 // Initialize on load
@@ -130,7 +136,7 @@ sendBtn.addEventListener('click', async () => {
     try {
         const code = generateCode();
         
-        // Store peer ID with code
+        // Store peer ID with code in cloud
         const peerId = peer.id;
         const payload = {
             peerId: peerId,
@@ -143,8 +149,17 @@ sendBtn.addEventListener('click', async () => {
             timestamp: Date.now()
         };
 
-        // Store in localStorage and also try to store online
-        localStorage.setItem(`share_${code}`, JSON.stringify(payload));
+        // Upload to JSONBin with code as name
+        const response = await fetch(SHARE_API, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Bin-Name': `share_${code}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error('Failed to create share code');
 
         // Generate shareable link
         const shareUrl = `${window.location.origin}${window.location.pathname}?code=${code}`;
@@ -164,7 +179,7 @@ sendBtn.addEventListener('click', async () => {
         // Add share URL
         const shareLink = document.createElement('div');
         shareLink.className = 'link share-url';
-        shareLink.innerHTML = `<small>Share this link:</small><br><a href="${shareUrl}" target="_blank">${shareUrl}</a><br><small style="color: #999; margin-top: 10px; display: block;">Keep this page open until transfer completes</small>`;
+        shareLink.innerHTML = `<small>Share this code:</small><br><strong style="font-size: 2rem; color: #667eea;">${code}</strong><br><small style="color: #999; margin-top: 10px; display: block;">Keep this page open until transfer completes</small>`;
         resultDiv.appendChild(shareLink);
         
         showStatus('Ready to share! Waiting for receiver...', 'success');
@@ -219,7 +234,7 @@ function sendFilesToPeer(conn) {
 }
 
 function generateCode() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
+    return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 function fileToBase64(file) {
@@ -259,7 +274,8 @@ function resetSend() {
 const codeInput = document.getElementById('codeInput');
 
 codeInput.addEventListener('input', (e) => {
-    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    // Only allow numbers
+    e.target.value = e.target.value.replace(/[^0-9]/g, '');
 });
 
 // Check URL for code on load
@@ -289,19 +305,47 @@ async function receiveFiles() {
         return;
     }
 
-    showStatus('Connecting to sender...', 'info');
+    showStatus('Looking up code...', 'info');
 
     try {
-        // Get sender's peer ID from localStorage
-        const shareData = localStorage.getItem(`share_${code}`);
-        
-        if (!shareData) {
-            showStatus('Code not found. Make sure sender is online.', 'error');
+        // Search for the code in JSONBin
+        const searchResponse = await fetch(`https://api.jsonbin.io/v3/c/67b8e8c5ad19ca34f8e8c8e5/bins`, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        let binId = null;
+        if (searchResponse.ok) {
+            const bins = await searchResponse.json();
+            const matchingBin = bins.record?.find(b => b.name === `share_${code}`);
+            if (matchingBin) {
+                binId = matchingBin.id;
+            }
+        }
+
+        if (!binId) {
+            showStatus('Code not found. Make sure sender is online and code is correct.', 'error');
             return;
         }
 
-        const payload = JSON.parse(shareData);
+        // Get the peer ID
+        const dataResponse = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!dataResponse.ok) {
+            showStatus('Failed to fetch sender info', 'error');
+            return;
+        }
+
+        const result = await dataResponse.json();
+        const payload = result.record;
         const senderPeerId = payload.peerId;
+
+        showStatus('Connecting to sender...', 'info');
 
         // Connect to sender
         const conn = peer.connect(senderPeerId, {
@@ -333,7 +377,7 @@ async function receiveFiles() {
 
     } catch (error) {
         console.error('Receive error:', error);
-        showStatus('Failed to connect. Please check the code.', 'error');
+        showStatus('Failed to connect. Make sure sender is online.', 'error');
     }
 }
 
