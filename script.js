@@ -215,6 +215,7 @@ sendBtn.addEventListener('click', async () => {
 });
 
 function sendFilesToPeer(conn) {
+    const CHUNK_SIZE = 16384; // 16KB chunks
     let fileIndex = 0;
 
     function sendNextFile() {
@@ -225,24 +226,50 @@ function sendFilesToPeer(conn) {
         }
 
         const file = selectedFiles[fileIndex];
-        const reader = new FileReader();
+        let offset = 0;
 
-        reader.onload = (e) => {
-            conn.send({
-                type: 'file',
-                name: file.name,
-                size: file.size,
-                fileType: file.type,
-                data: e.target.result,
-                index: fileIndex,
-                total: selectedFiles.length
-            });
-            fileIndex++;
-            showStatus(`Sending ${fileIndex}/${selectedFiles.length} files...`, 'info');
-            setTimeout(sendNextFile, 100);
-        };
+        // Send file metadata first
+        conn.send({
+            type: 'file-start',
+            name: file.name,
+            size: file.size,
+            fileType: file.type,
+            index: fileIndex,
+            total: selectedFiles.length
+        });
 
-        reader.readAsArrayBuffer(file);
+        function sendChunk() {
+            const chunk = file.slice(offset, offset + CHUNK_SIZE);
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                conn.send({
+                    type: 'file-chunk',
+                    data: e.target.result,
+                    index: fileIndex
+                });
+
+                offset += CHUNK_SIZE;
+                const progress = Math.min(100, Math.round((offset / file.size) * 100));
+                showStatus(`Sending ${file.name}: ${progress}%`, 'info');
+
+                if (offset < file.size) {
+                    setTimeout(sendChunk, 10);
+                } else {
+                    // File complete
+                    conn.send({
+                        type: 'file-end',
+                        index: fileIndex
+                    });
+                    fileIndex++;
+                    setTimeout(sendNextFile, 100);
+                }
+            };
+
+            reader.readAsArrayBuffer(chunk);
+        }
+
+        sendChunk();
     }
 
     sendNextFile();
@@ -439,24 +466,43 @@ function connectToPeer(senderPeerId) {
     showStatus('Connecting to sender...', 'info');
 
     try {
-        // Connect to sender
         const conn = peer.connect(senderPeerId, {
             reliable: true
         });
+
+        let currentFile = null;
+        let fileChunks = [];
 
         conn.on('open', () => {
             showStatus('Connected! Receiving files...', 'success');
         });
 
         conn.on('data', (data) => {
-            if (data.type === 'file') {
-                const blob = new Blob([data.data], { type: data.fileType });
-                receivedFiles.push({
+            if (data.type === 'file-start') {
+                // Start receiving a new file
+                currentFile = {
                     name: data.name,
                     size: data.size,
+                    fileType: data.fileType,
+                    index: data.index,
+                    total: data.total
+                };
+                fileChunks = [];
+                showStatus(`Receiving ${data.name}...`, 'info');
+            } else if (data.type === 'file-chunk') {
+                // Receive chunk
+                fileChunks.push(data.data);
+            } else if (data.type === 'file-end') {
+                // File complete - combine chunks
+                const blob = new Blob(fileChunks, { type: currentFile.fileType });
+                receivedFiles.push({
+                    name: currentFile.name,
+                    size: currentFile.size,
                     blob: blob
                 });
-                showStatus(`Receiving ${data.index + 1}/${data.total} files...`, 'info');
+                showStatus(`Received ${currentFile.name}`, 'success');
+                fileChunks = [];
+                currentFile = null;
             } else if (data.type === 'complete') {
                 showStatus('All files received!', 'success');
                 displayReceivedFiles();
