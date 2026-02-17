@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>File Share Backend</title>
+</head>
+<body>
+    <h1>File Share Code Storage</h1>
+    <p>Simple backend for storing code-to-peer mappings</p>
+    
+    <script>
+        // Simple in-memory storage (resets on page reload)
+        const storage = {};
+        
+        // Listen for messages from other windows
+        window.addEventListener('message', (event) => {
+            const { action, code, peerId } = event.data;
+            
+            if (action === 'store') {
+                storage[code] = {
+                    peerId: peerId,
+                    timestamp: Date.now()
+                };
+                event.source.postMessage({ success: true, code }, event.origin);
+            } else if (action === 'retrieve') {
+                const data = storage[code];
+                event.source.postMessage({ success: !!data, data }, event.origin);
+            }
+        });
+        
+        // Broadcast storage to localStorage for cross-tab communication
+        setInterval(() => {
+            localStorage.setItem('share_storage', JSON.stringify(storage));
+        }, 1000);
+    </script>
+</body>
+</html>

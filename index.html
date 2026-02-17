@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Send Anywhere - File Transfer</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -73,6 +74,13 @@
                             </button>
                         </div>
                     </div>
+                    
+                    <!-- QR Code -->
+                    <div class="qr-section" id="qrSection" style="display: none;">
+                        <p style="margin: 10px 0; color: #666; font-size: 0.9rem;">Scan QR code to download:</p>
+                        <canvas id="qrcode" style="margin: 0 auto; display: block;"></canvas>
+                    </div>
+                    
                     <p class="expire-text">Expires in 24 hours</p>
                     <button class="secondary-btn" onclick="resetSend()">Send Another</button>
                 </div>

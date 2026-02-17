@@ -505,3 +505,18 @@ footer a:hover {
     padding: 10px;
     background: white;
 }
+
+/* QR Code Section */
+.qr-section {
+    background: #f8f9ff;
+    padding: 20px;
+    border-radius: 15px;
+    margin: 20px 0;
+}
+
+.qr-section canvas {
+    border: 3px solid #667eea;
+    border-radius: 10px;
+    padding: 10px;
+    background: white;
+}
