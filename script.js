@@ -2,6 +2,11 @@
 let selectedFiles = [];
 let peer = null;
 let connections = {};
+const SUPABASE_URL = 'https://xyzcompany.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emNvbXBhbnkiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTYxNjE2MTYxNiwiZXhwIjoxOTMxNzM3NjE2fQ.example';
+
+// Use a simple free API for code storage
+const CODE_API = 'https://api.npoint.io/';
 
 // Initialize PeerJS
 function initPeer() {
@@ -28,14 +33,9 @@ function initPeer() {
     });
 }
 
-// Generate 6-digit numeric code from peer ID
-function peerIdToCode(peerId) {
-    let hash = 0;
-    for (let i = 0; i < peerId.length; i++) {
-        hash = ((hash << 5) - hash) + peerId.charCodeAt(i);
-        hash = hash & hash;
-    }
-    return Math.abs(hash % 900000 + 100000).toString();
+// Generate 6-digit numeric code
+function generateCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 // Initialize on load
@@ -139,16 +139,19 @@ sendBtn.addEventListener('click', async () => {
 
     try {
         const peerId = peer.id;
-        const code = peerIdToCode(peerId);
+        const code = generateCode();
         
-        // Store code mapping in localStorage
-        localStorage.setItem(`code_${code}`, JSON.stringify({
+        // Store code and peer ID mapping using a simple key-value store
+        const payload = {
             peerId: peerId,
             timestamp: Date.now()
-        }));
+        };
         
-        // Generate shareable link with peer ID encoded
-        const shareUrl = `${window.location.origin}${window.location.pathname}?peer=${encodeURIComponent(peerId)}`;
+        // Store in localStorage as backup
+        localStorage.setItem(`code_${code}`, JSON.stringify(payload));
+        
+        // Also store globally using a simple approach - encode in URL
+        const shareUrl = `${window.location.origin}${window.location.pathname}?c=${code}&p=${btoa(peerId)}`;
         
         document.getElementById('shareCode').textContent = code;
         document.getElementById('send-content').querySelector('.upload-area').style.display = 'none';
@@ -168,7 +171,7 @@ sendBtn.addEventListener('click', async () => {
         shareLink.innerHTML = `
             <small>Share this code:</small><br>
             <strong style="font-size: 2rem; color: #667eea;">${code}</strong><br>
-            <small style="color: #999; margin-top: 10px; display: block;">Or share this link:</small>
+            <small style="color: #999; margin-top: 10px; display: block;">Or share this link for cross-device:</small>
             <a href="${shareUrl}" target="_blank" style="font-size: 0.9rem; word-break: break-all;">${shareUrl}</a><br>
             <small style="color: #999; margin-top: 10px; display: block;">Keep this page open until transfer completes</small>
         `;
@@ -273,10 +276,20 @@ codeInput.addEventListener('input', (e) => {
 // Check URL for peer ID on load
 window.addEventListener('load', () => {
     const urlParams = new URLSearchParams(window.location.search);
-    const peerIdFromUrl = urlParams.get('peer');
+    const code = urlParams.get('c');
+    const encodedPeer = urlParams.get('p');
     
-    if (peerIdFromUrl) {
-        // Auto-connect if peer ID in URL
+    if (code && encodedPeer) {
+        // Auto-fill code and connect
+        codeInput.value = code;
+        document.querySelector('[data-tab="receive"]').click();
+        setTimeout(() => {
+            const peerId = atob(encodedPeer);
+            connectToPeer(peerId);
+        }, 1000);
+    } else if (urlParams.get('peer')) {
+        // Old format support
+        const peerIdFromUrl = urlParams.get('peer');
         document.querySelector('[data-tab="receive"]').click();
         setTimeout(() => {
             connectToPeer(peerIdFromUrl);
@@ -310,12 +323,12 @@ async function receiveFiles() {
             const data = JSON.parse(storedData);
             connectToPeer(data.peerId);
         } else {
-            showStatus('Code not found. Make sure sender is on the same network or use the share link.', 'error');
+            showStatus('Code not found. For cross-device transfer, please use the share link instead of just the code.', 'error');
         }
 
     } catch (error) {
         console.error('Receive error:', error);
-        showStatus('Failed to connect. Please try using the share link.', 'error');
+        showStatus('Failed to connect. Please use the share link for cross-device transfers.', 'error');
     }
 }
 
