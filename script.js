@@ -2,7 +2,6 @@
 let selectedFiles = [];
 let peer = null;
 let connections = {};
-const FIREBASE_URL = 'https://file-share-db-default-rtdb.firebaseio.com';
 
 // Initialize PeerJS
 function initPeer() {
@@ -29,9 +28,14 @@ function initPeer() {
     });
 }
 
-// Generate 6-digit numeric code
-function generateCode() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+// Generate 6-digit numeric code from peer ID
+function peerIdToCode(peerId) {
+    let hash = 0;
+    for (let i = 0; i < peerId.length; i++) {
+        hash = ((hash << 5) - hash) + peerId.charCodeAt(i);
+        hash = hash & hash;
+    }
+    return Math.abs(hash % 900000 + 100000).toString();
 }
 
 // Initialize on load
@@ -134,34 +138,11 @@ sendBtn.addEventListener('click', async () => {
     showStatus('Preparing files...', 'info');
 
     try {
-        const code = generateCode();
-        
-        // Store peer ID with code in Firebase
         const peerId = peer.id;
-        const payload = {
-            peerId: peerId,
-            fileCount: selectedFiles.length,
-            files: selectedFiles.map(f => ({
-                name: f.name,
-                size: f.size,
-                type: f.type
-            })),
-            timestamp: Date.now()
-        };
-
-        // Upload to Firebase
-        const response = await fetch(`${FIREBASE_URL}/shares/${code}.json`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) throw new Error('Failed to create share code');
-
-        // Generate shareable link
-        const shareUrl = `${window.location.origin}${window.location.pathname}?code=${code}`;
+        const code = peerIdToCode(peerId);
+        
+        // Generate shareable link with peer ID encoded
+        const shareUrl = `${window.location.origin}${window.location.pathname}?peer=${encodeURIComponent(peerId)}`;
         
         document.getElementById('shareCode').textContent = code;
         document.getElementById('send-content').querySelector('.upload-area').style.display = 'none';
@@ -175,10 +156,16 @@ sendBtn.addEventListener('click', async () => {
         const oldUrl = resultDiv.querySelector('.share-url');
         if (oldUrl) oldUrl.remove();
         
-        // Add share URL
+        // Add share info
         const shareLink = document.createElement('div');
         shareLink.className = 'link share-url';
-        shareLink.innerHTML = `<small>Share this code:</small><br><strong style="font-size: 2rem; color: #667eea;">${code}</strong><br><small style="color: #999; margin-top: 10px; display: block;">Keep this page open until transfer completes</small>`;
+        shareLink.innerHTML = `
+            <small>Share this code:</small><br>
+            <strong style="font-size: 2rem; color: #667eea;">${code}</strong><br>
+            <small style="color: #999; margin-top: 10px; display: block;">Or share this link:</small>
+            <a href="${shareUrl}" target="_blank" style="font-size: 0.9rem; word-break: break-all;">${shareUrl}</a><br>
+            <small style="color: #999; margin-top: 10px; display: block;">Keep this page open until transfer completes</small>
+        `;
         resultDiv.appendChild(shareLink);
         
         showStatus('Ready to share! Waiting for receiver...', 'success');
@@ -277,14 +264,17 @@ codeInput.addEventListener('input', (e) => {
     e.target.value = e.target.value.replace(/[^0-9]/g, '');
 });
 
-// Check URL for code on load
+// Check URL for peer ID on load
 window.addEventListener('load', () => {
     const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    if (code) {
-        codeInput.value = code;
+    const peerIdFromUrl = urlParams.get('peer');
+    
+    if (peerIdFromUrl) {
+        // Auto-connect if peer ID in URL
         document.querySelector('[data-tab="receive"]').click();
-        setTimeout(() => receiveFiles(), 1000);
+        setTimeout(() => {
+            connectToPeer(peerIdFromUrl);
+        }, 1000);
     }
 });
 
@@ -298,34 +288,19 @@ async function receiveFiles() {
         return;
     }
 
+    showStatus('Code-based connection not supported. Please use the share link instead.', 'error');
+}
+
+function connectToPeer(senderPeerId) {
     if (!peer || !peer.id) {
         showStatus('Initializing connection...', 'info');
-        setTimeout(receiveFiles, 1000);
+        setTimeout(() => connectToPeer(senderPeerId), 1000);
         return;
     }
 
-    showStatus('Looking up code...', 'info');
+    showStatus('Connecting to sender...', 'info');
 
     try {
-        // Get the peer ID from Firebase
-        const response = await fetch(`${FIREBASE_URL}/shares/${code}.json`);
-
-        if (!response.ok) {
-            showStatus('Code not found. Make sure sender is online and code is correct.', 'error');
-            return;
-        }
-
-        const payload = await response.json();
-        
-        if (!payload || !payload.peerId) {
-            showStatus('Code not found. Make sure sender is online and code is correct.', 'error');
-            return;
-        }
-
-        const senderPeerId = payload.peerId;
-
-        showStatus('Connecting to sender...', 'info');
-
         // Connect to sender
         const conn = peer.connect(senderPeerId, {
             reliable: true
