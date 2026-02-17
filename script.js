@@ -472,9 +472,10 @@ function connectToPeer(senderPeerId) {
 
         let currentFile = null;
         let fileChunks = [];
+        let receivedBytes = 0;
 
         conn.on('open', () => {
-            showStatus('Connected! Receiving files...', 'success');
+            showStatus('Connected! Waiting for files...', 'success');
         });
 
         conn.on('data', (data) => {
@@ -488,19 +489,37 @@ function connectToPeer(senderPeerId) {
                     total: data.total
                 };
                 fileChunks = [];
-                showStatus(`Receiving ${data.name}...`, 'info');
+                receivedBytes = 0;
+                showStatus(`Receiving ${data.name}... 0%`, 'info');
             } else if (data.type === 'file-chunk') {
                 // Receive chunk
                 fileChunks.push(data.data);
+                receivedBytes += data.data.byteLength;
+                
+                // Show progress
+                const progress = Math.round((receivedBytes / currentFile.size) * 100);
+                showStatus(`Receiving ${currentFile.name}... ${progress}%`, 'info');
             } else if (data.type === 'file-end') {
                 // File complete - combine chunks
+                showStatus(`Processing ${currentFile.name}...`, 'info');
                 const blob = new Blob(fileChunks, { type: currentFile.fileType });
                 receivedFiles.push({
                     name: currentFile.name,
                     size: currentFile.size,
                     blob: blob
                 });
-                showStatus(`Received ${currentFile.name}`, 'success');
+                
+                // Auto-download the file immediately
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = currentFile.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showStatus(`Downloaded ${currentFile.name}!`, 'success');
                 fileChunks = [];
                 currentFile = null;
             } else if (data.type === 'complete') {
