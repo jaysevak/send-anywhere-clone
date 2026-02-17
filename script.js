@@ -283,28 +283,31 @@ function sendFilesToPeer(conn) {
                     index: fileIndex
                 });
 
-                offset += CHUNK_SIZE;
+                offset += e.target.result.byteLength; // Use actual bytes sent, not CHUNK_SIZE
                 totalBytesSent += e.target.result.byteLength;
                 
-                // Update progress
+                // Update progress (capped at 100%)
                 const progress = Math.min(100, Math.round((offset / file.size) * 100));
                 document.getElementById('progressPercent').textContent = `${progress}%`;
                 document.getElementById('progressFill').style.width = `${progress}%`;
                 
                 // Calculate speed
                 const elapsed = (Date.now() - fileStartTime) / 1000;
-                const speed = offset / elapsed;
+                const speed = elapsed > 0 ? offset / elapsed : 0;
                 document.getElementById('progressSpeed').textContent = `${formatFileSize(speed)}/s`;
                 
                 // Calculate ETA
                 const remaining = file.size - offset;
-                const eta = remaining / speed;
+                const eta = speed > 0 ? remaining / speed : 0;
                 document.getElementById('progressETA').textContent = `ETA: ${formatTime(eta)}`;
                 
                 if (offset < file.size) {
                     setTimeout(sendChunk, 10);
                 } else {
-                    // File complete
+                    // File complete - set to 100%
+                    document.getElementById('progressPercent').textContent = '100%';
+                    document.getElementById('progressFill').style.width = '100%';
+                    
                     conn.send({
                         type: 'file-end',
                         index: fileIndex
