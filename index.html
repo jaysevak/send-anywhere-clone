@@ -62,22 +62,10 @@
                 <div id="sendResult" class="result-box" style="display: none;">
                     <div class="success-icon">✓</div>
                     <h3>Files Ready to Share!</h3>
-                    <div class="share-code">
-                        <label>Share Code</label>
-                        <div class="code-display">
-                            <span id="shareCode"></span>
-                            <button class="copy-btn" onclick="copyCode()">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
                     
                     <!-- QR Code -->
-                    <div class="qr-section" id="qrSection" style="display: none;">
-                        <p style="margin: 10px 0; color: #666; font-size: 0.9rem;">Scan QR code to download:</p>
+                    <div class="qr-section" id="qrSection">
+                        <p style="margin: 10px 0 20px; color: #666; font-size: 1rem;">Scan QR code to download:</p>
                         <canvas id="qrcode" style="margin: 0 auto; display: block;"></canvas>
                     </div>
                     

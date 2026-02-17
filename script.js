@@ -215,22 +215,16 @@ sendBtn.addEventListener('click', async () => {
         
         const shareUrl = `${window.location.origin}${window.location.pathname}?c=${code}&p=${btoa(peerId)}`;
         
-        document.getElementById('shareCode').textContent = code;
-        
         // Generate QR Code
         if (typeof QRCode !== 'undefined') {
             const canvas = document.getElementById('qrcode');
             const qrSection = document.getElementById('qrSection');
             QRCode.toCanvas(canvas, shareUrl, {
-                width: 200,
+                width: 250,
                 margin: 2,
                 color: {
                     dark: '#667eea',
                     light: '#ffffff'
-                }
-            }, (error) => {
-                if (!error) {
-                    qrSection.style.display = 'block';
                 }
             });
         }
