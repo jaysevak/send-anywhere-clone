@@ -571,21 +571,29 @@ function connectToPeer(senderPeerId) {
                 fileChunks.push(data.data);
                 receivedBytes += data.data.byteLength;
                 
-                // Update progress
-                const progress = Math.round((receivedBytes / currentFile.size) * 100);
+                // Cap receivedBytes to file size (safety check)
+                if (receivedBytes > currentFile.size) {
+                    console.warn('Received more bytes than expected!');
+                    receivedBytes = currentFile.size;
+                }
+                
+                // Update progress (capped at 100%)
+                const progress = Math.min(100, Math.round((receivedBytes / currentFile.size) * 100));
                 document.getElementById('receiveProgressPercent').textContent = `${progress}%`;
                 document.getElementById('receiveProgressFill').style.width = `${progress}%`;
                 
                 // Calculate speed
                 const elapsed = (Date.now() - fileStartTime) / 1000;
-                const speed = receivedBytes / elapsed;
+                const speed = elapsed > 0 ? receivedBytes / elapsed : 0;
                 document.getElementById('receiveProgressSpeed').textContent = `${formatFileSize(speed)}/s`;
                 
-                // Show size
+                // Show size (capped)
+                const displayReceived = Math.min(receivedBytes, currentFile.size);
                 document.getElementById('receiveProgressSize').textContent = 
-                    `${formatFileSize(receivedBytes)} / ${formatFileSize(currentFile.size)}`;
+                    `${formatFileSize(displayReceived)} / ${formatFileSize(currentFile.size)}`;
             } else if (data.type === 'file-end') {
                 // File complete - combine chunks and download
+                console.log(`File complete: ${currentFile.name}, chunks: ${fileChunks.length}, total bytes: ${receivedBytes}`);
                 const blob = new Blob(fileChunks, { type: currentFile.fileType });
                 
                 // Download immediately
