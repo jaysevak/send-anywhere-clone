@@ -602,14 +602,16 @@ function handleIncomingConnection(conn) {
         console.log('Selected files:', selectedFiles);
         showStatus('Receiver connected! Sending files...', 'info');
         
-        // Send files to the connected peer
-        if (selectedFiles && selectedFiles.length > 0) {
-            console.log('Sending', selectedFiles.length, 'files');
-            sendFilesToPeer(conn);
-        } else {
-            console.error('No files available to send');
-            showStatus('No files to send. Please upload files first.', 'error');
-        }
+        // Wait a moment for connection to stabilize
+        setTimeout(() => {
+            if (selectedFiles && selectedFiles.length > 0) {
+                console.log('Sending', selectedFiles.length, 'files');
+                sendFilesToPeer(conn);
+            } else {
+                console.error('No files available to send');
+                showStatus('No files to send. Please upload files first.', 'error');
+            }
+        }, 500);
     });
     
     conn.on('error', (err) => {
