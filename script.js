@@ -3,8 +3,8 @@ let selectedFiles = [];
 let peer = null;
 let connections = {};
 
-// Use dpaste.com as a simple key-value store
-const STORAGE_API = 'https://dpaste.com/api/v2/';
+// Use GitHub Gist as backend (no auth needed for public gists)
+const GIST_API = 'https://api.github.com/gists';
 
 // Initialize PeerJS
 function initPeer() {
@@ -36,25 +36,31 @@ function generateCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Store code mapping online
+// Store code mapping online using GitHub Gist
 async function storeCodeMapping(code, peerId) {
     try {
-        const formData = new FormData();
-        formData.append('content', peerId);
-        formData.append('title', `share_${code}`);
-        formData.append('syntax', 'text');
-        formData.append('expiry_days', '1');
+        const gistData = {
+            description: `File share code ${code}`,
+            public: true,
+            files: {
+                [`share_${code}.txt`]: {
+                    content: peerId
+                }
+            }
+        };
         
-        const response = await fetch(STORAGE_API, {
+        const response = await fetch(GIST_API, {
             method: 'POST',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(gistData)
         });
         
         if (response.ok) {
-            const url = await response.text();
-            // Extract paste ID from URL
-            const pasteId = url.trim().split('/').pop();
-            localStorage.setItem(`paste_${code}`, pasteId);
+            const result = await response.json();
+            const gistId = result.id;
+            localStorage.setItem(`gist_${code}`, gistId);
             return true;
         }
         return false;
@@ -67,16 +73,20 @@ async function storeCodeMapping(code, peerId) {
 // Retrieve peer ID from code
 async function retrievePeerIdFromCode(code) {
     try {
-        // Try localStorage first
-        const pasteId = localStorage.getItem(`paste_${code}`);
-        if (pasteId) {
-            const response = await fetch(`https://dpaste.com/${pasteId}.txt`);
+        // Try localStorage for gist ID
+        const gistId = localStorage.getItem(`gist_${code}`);
+        if (gistId) {
+            const response = await fetch(`${GIST_API}/${gistId}`);
             if (response.ok) {
-                return await response.text();
+                const gist = await response.json();
+                const file = gist.files[`share_${code}.txt`];
+                if (file) {
+                    return file.content;
+                }
             }
         }
         
-        // Try localStorage backup
+        // Fallback to localStorage backup
         const localData = localStorage.getItem(`code_${code}`);
         if (localData) {
             const data = JSON.parse(localData);
